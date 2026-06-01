@@ -1,0 +1,108 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# HOW TO INTEGRATE auth.py INTO YOUR EXISTING app.py
+# Apply the three changes below — everything else in app.py stays the same.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CHANGE 1 — Add this import near the top of app.py, after the other imports
+# (e.g. right after "from simulation import simulate_journey")
+# ════════════════════════════════════════════════════════════════════════════
+from auth import require_auth, show_user_pill, save_journey, AUTH_CSS
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CHANGE 2 — Add this gate right after st.set_page_config(...)
+#            and the big st.markdown("""<style>...""") block.
+#
+#            This is approximately line 90 in your current app.py,
+#            just before the TRAIN_PRESETS dict.
+# ════════════════════════════════════════════════════════════════════════════
+
+# Inject auth CSS (same design tokens as the app)
+st.markdown(AUTH_CSS, unsafe_allow_html=True)
+
+# Show the login page if the user is not authenticated yet.
+# st.stop() prevents the rest of the app from rendering.
+if not require_auth():
+    st.stop()
+
+# ─── Convenience shortcut — the logged-in user dict ───────────────────────
+current_user = st.session_state["user"]   # keys: name, phone, joined, journey_history
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CHANGE 3 — Update the top-bar HTML + add the logout pill
+#
+# Find the existing st.markdown(...rt-topbar...) line and replace it with
+# the version below. The only addition is the `show_user_pill()` call after
+# the markdown, which renders the user name and logout button on the right.
+# ════════════════════════════════════════════════════════════════════════════
+
+# ── REPLACE the existing top-bar st.markdown with this ────────────────────
+st.markdown(f'''
+<div class="rt-topbar">
+  <div class="rt-brand">
+    <span class="rt-logo">RailTrack</span>
+    <span class="rt-badge">ETA Engine</span>
+    <span class="rt-route">{origin_choice.split()[0]} to {dest_choice.split()[0]}</span>
+  </div>
+  <div class="rt-clock">Train {train_id} &middot; {now.strftime('%d %b %Y, %H:%M')}</div>
+</div>
+''', unsafe_allow_html=True)
+
+# ── ADD this right after the top-bar markdown ──────────────────────────────
+show_user_pill()   # renders "👤 Name" pill and Logout button in a compact row
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# OPTIONAL — Save journeys linked to the logged-in user
+#
+# In tab_hist, the existing "Save journey" form calls append_history().
+# You can additionally call save_journey() to store it in users.json:
+# ════════════════════════════════════════════════════════════════════════════
+
+# Inside the st.form("log_form") block, after append_history(...), add:
+save_journey(
+    phone=current_user["phone"],
+    journey={
+        "from":         origin_choice,
+        "to":           dest_choice,
+        "eta_minutes":  round(avg_eta, 1),
+        "distance_km":  round(dist_km, 1),
+        "speed_kmh":    speed,
+        "actual_min":   actual_min,
+    }
+)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# FULL MINIMAL app.py SNIPPET (top section only, showing integration order)
+# ════════════════════════════════════════════════════════════════════════════
+"""
+import datetime, time, sys
+from pathlib import Path
+...
+import streamlit as st
+
+sys.path.insert(0, str(Path(__file__).parent))
+from stations  import STATIONS, station_names, get_station
+from distance  import distance_between, bearing
+from eta       import physics_eta_minutes, compute_arrival_time, compute_delay_minutes
+from ml_model  import predict_eta, train_model, append_history
+from simulation import simulate_journey
+from auth      import require_auth, show_user_pill, save_journey, AUTH_CSS   # ← NEW
+
+st.set_page_config(...)
+
+st.markdown(\"\"\"<style>...existing CSS...</style>\"\"\", unsafe_allow_html=True)
+st.markdown(AUTH_CSS, unsafe_allow_html=True)   # ← NEW
+
+if not require_auth():   # ← NEW gate
+    st.stop()
+
+current_user = st.session_state["user"]   # ← NEW shortcut
+
+TRAIN_PRESETS = { ... }   # unchanged — rest of app continues as normal
+...
+"""
